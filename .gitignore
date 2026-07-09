@@ -1,0 +1,17 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Never store firmware binaries in the git tree — they live as release assets.
+*.xz
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+
+# Local downloads / scratch
+downloads/
+*.tmp
