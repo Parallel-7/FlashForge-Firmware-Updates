@@ -1,0 +1,73 @@
+# Build the USB update file for a firmware release, then refresh the index.
+#
+# Runs when a release is published (the bot publishes a release only after all
+# raw packages are uploaded). Run it by hand to rebuild one tag or all tags.
+name: USB update file and index
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (empty = all firmware releases)"
+        required: false
+        default: ""
+      force:
+        description: "Rebuild USB files that exist"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# One run at a time: runs edit the same releases and push to main.
+concurrency:
+  group: firmware-mirror
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and upload the USB update file
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_FORCE: ${{ inputs.force }}
+        run: |
+          args=""
+          tag="${EVENT_TAG:-$INPUT_TAG}"
+          if [ -n "$tag" ]; then args="--tag $tag"; else args="--all"; fi
+          if [ "$INPUT_FORCE" = "true" ]; then args="$args --force"; fi
+          python tools/build_flashable.py $args
+
+      - name: Refresh the index
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tools/build_index.py
+
+      - name: Commit the index
+        if: always()
+        run: |
+          git add README.md printers
+          if git diff --cached --quiet; then
+            echo "Index is up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update the firmware index"
+          git pull --rebase
+          git push

@@ -1,0 +1,4 @@
+# The update script runs on the printer: it must keep LF line endings.
+*.sh.in text eol=lf
+*.img binary
+usb-kit/play/** binary

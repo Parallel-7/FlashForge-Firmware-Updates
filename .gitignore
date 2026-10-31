@@ -15,3 +15,8 @@ Thumbs.db
 # Local downloads / scratch
 downloads/
 *.tmp
+
+# Python
+__pycache__/
+.pytest_cache/
+build/

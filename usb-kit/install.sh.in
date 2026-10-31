@@ -1,0 +1,94 @@
+#!/bin/sh
+# USB update script for the @NAME@ (MACHINE=@MACHINE@, PID=@PID@).
+#
+# Made by https://github.com/Parallel-7/FlashForge-Firmware-Updates
+# The printer's startup script finds @MACHINE@-*.tgz on the USB drive, extracts
+# it and runs this script as: @SCRIPT@ @MACHINE@ @PID@
+#
+# This script installs only the stock FlashForge packages in this archive, the
+# same way the stock USB update script does. It does not change the root
+# password, inittab, printer.cfg or user files.
+
+WORK_DIR=$(cd "$(dirname "$0")" && pwd)
+RUN_DIR="@RUN_DIR@"
+MACHINE=@MACHINE@
+PID=@PID@
+FAILED=0
+
+# Stop on the wrong hardware.
+ARCH=`uname -m`
+if [ "${ARCH}" != "@ARCH@" ]; then
+	echo "Machine architecture error: ${ARCH}"
+	exit 1
+fi
+
+# Stop on the wrong model. Old startup scripts pass no arguments.
+if [ "$1" != "" ] && [ "$2" != "" ]; then
+	if [ "$1" != "${MACHINE}" ] || [ "$2" != "${PID}" ]; then
+		echo "Firmware does not match machine type."
+		exit 1
+	fi
+fi
+
+# Check every package file before anything changes.
+cd "${WORK_DIR}" || exit 1
+if ! md5sum -c packages.md5; then
+	echo "Package check failed. Nothing was installed."
+	exit 1
+fi
+
+# install_pkg <package> <run run.sh: 1 or 0>
+# Extract <package>-<version>.tar.xz to RUN_DIR/<package>/temp, check its
+# md5sum.list, replace the old version and run its run.sh (as stock).
+install_pkg()
+{
+	pkg=$1
+	cd "${WORK_DIR}" || return
+	file_name=`ls -1 ${pkg}-*.tar.xz 2>/dev/null | head -n 1`
+	if [ -z "${file_name}" ]; then
+		echo "No ${pkg} package. Skip."
+		return
+	fi
+	version=${file_name#${pkg}-}
+	version=${version%.tar.xz}
+	echo "Install ${pkg} ${version}"
+
+	mkdir -p "${RUN_DIR}/${pkg}"
+	cd "${RUN_DIR}/${pkg}" || return
+	rm -rf temp
+	mkdir -p temp
+	tar -xvf "${WORK_DIR}/${file_name}" -C temp
+	sync
+	cd temp
+	if md5sum -c md5sum.list >/dev/null 2>&1; then
+		cd ..
+		ls | grep -v temp | xargs rm -rf
+		sync
+		mv temp "${version}"
+		sync
+		cd "${version}"
+		if [ "$2" = "1" ] && [ -f run.sh ]; then
+			chmod a+x run.sh
+			"${RUN_DIR}/${pkg}/${version}/run.sh"
+		fi
+	else
+		echo "${pkg} ${version}: md5 check failed. Skip."
+		cd ..
+		rm -rf temp
+		FAILED=1
+	fi
+}
+@FAMILY_FUNCTIONS@
+mkdir -p "${RUN_DIR}"
+sync
+cat "${WORK_DIR}/start.img" > /dev/fb0
+@FAMILY_STEPS@
+@INSTALL_STEPS@
+sync
+if [ "${FAILED}" != "0" ]; then
+	echo "One or more packages did not install."
+	exit 1
+fi
+cat "${WORK_DIR}/end.img" > /dev/fb0
+"${WORK_DIR}/play"
+exit 0
